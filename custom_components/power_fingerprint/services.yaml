@@ -1,0 +1,17 @@
+reset_model:
+  name: Reset learned model
+  description: Reset learned observations for one source entity, or all source entities if omitted.
+  fields:
+    source_entity:
+      name: Source entity
+      description: The original light, switch, fan, media player, or climate entity whose fingerprint should be reset.
+      required: false
+      selector:
+        entity: {}
+    reset_energy:
+      name: Reset inferred energy
+      description: Also reset the cumulative inferred kWh sensor. Leave off to relearn power without losing historical inferred energy.
+      required: false
+      default: false
+      selector:
+        boolean: {}

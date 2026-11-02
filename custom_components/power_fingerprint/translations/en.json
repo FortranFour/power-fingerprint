@@ -1,0 +1,66 @@
+{
+  "title": "Power Fingerprint",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Power Fingerprint",
+        "description": "Choose the whole-house power sensor and unmetered loads to fingerprint. Power Fingerprint learns validated residual-power profiles, integrates trustworthy device energy, and can graduate mature deterministic profiles to local Powercalc models.",
+        "data": {
+          "source_power": "Whole-house power sensor",
+          "tracked_entities": "Unmetered devices to fingerprint",
+          "use_energy_dashboard_meters": "Subtract Energy Dashboard device power sensors automatically",
+          "auto_export_energy_dashboard": "Automatically add Energy-ready devices to Energy Dashboard",
+          "additional_meters": "Additional directly metered power sensors",
+          "excluded_meters": "Energy Dashboard power sensors to exclude"
+        },
+        "data_description": {
+          "tracked_entities": "Select physical loads only. Climate entities are handled by the same live-isolation engine as all other devices; hvac_action supplies activity channels when available.",
+          "auto_export_energy_dashboard": "When a device accumulates enough validated live-isolation evidence, add its isolated energy and power sensors to Energy Dashboard device consumption automatically.",
+          "additional_meters": "These are subtracted from whole-house power in addition to Energy Dashboard meters.",
+          "excluded_meters": "Use this if a displayed Energy Dashboard power sensor is already included inside another top-level meter."
+        }
+      }
+    },
+    "error": {
+      "unsupported_domain": "One or more selected tracked entities use an unsupported domain."
+    },
+    "abort": {
+      "already_configured": "Power Fingerprint is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Power Fingerprint options",
+        "description": "Entity selections take effect after reload. Version 0.6.3 preserves learned records for temporarily untracked devices, uses generic device plausibility limits, prevents provisional profiles from being labeled Energy Dashboard ready, and supports excluding selected devices from unattended active calibration.",
+        "data": {
+          "source_power": "Whole-house power sensor",
+          "tracked_entities": "Unmetered devices to fingerprint",
+          "use_energy_dashboard_meters": "Subtract Energy Dashboard device power sensors automatically",
+          "auto_export_energy_dashboard": "Automatically add Energy-ready devices to Energy Dashboard",
+          "additional_meters": "Additional directly metered power sensors",
+          "excluded_meters": "Energy Dashboard power sensors to exclude",
+          "settle_seconds": "Calibration settle time (seconds)",
+          "pre_window_seconds": "Legacy-prior pre-transition window (seconds)",
+          "post_window_seconds": "Legacy-prior post-transition window (seconds)",
+          "max_noise_w": "Maximum residual MAD noise",
+          "min_step_w": "Minimum attributable power step",
+          "concurrency_seconds": "Tracked-device concurrency guard (seconds)",
+          "min_samples": "Accepted prior samples required before reporting a usable prior",
+          "inverter_min_step_w": "Latent climate activity minimum step",
+          "inverter_confirm_seconds": "Latent climate activity confirmation time",
+          "sample_interval_seconds": "Internal residual sampling interval (seconds)",
+          "meter_grace_seconds": "Short meter outage hold time (seconds)",
+          "meter_rejoin_seconds": "Stable availability required before quarantined meter rejoins (seconds)",
+          "calibration_excluded_entities": "Exclude devices from unattended active calibration"
+        },
+        "data_description": {
+          "calibration_excluded_entities": "These devices remain available for passive learning and manual operation, but intelligent batch calibration will never turn them on or off."
+        }
+      }
+    },
+    "error": {
+      "unsupported_domain": "One or more selected tracked entities use an unsupported domain."
+    }
+  }
+}
