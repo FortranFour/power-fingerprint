@@ -1,4 +1,4 @@
-"""Offline regression checks for 0.7.4; run with Python's unittest runner.
+"""Offline regression checks for 0.7.5; run with Python's unittest runner.
 
 HA boundaries are stubbed; the coordinator, models, sensors, and learning
 methods under test are the actual distributable code. These checks do not
@@ -858,6 +858,43 @@ class DiagnosticsReplayTests(unittest.TestCase):
                     and self.eng.models[eid].validated_sessions == 0
                     and self.eng._soft_evidence_summary(eid)["evidence_units"] < 3):
                 self.assertIn(eid, candidates)
+
+
+class RecorderTests(unittest.TestCase):
+    def test_learning_status_attribute_list_matches_published_attributes(self):
+        eng = engine(("switch.a",))
+        eng.data = eng.snapshot()
+        attrs = sensors.LearningStatusSensor(eng).extra_state_attributes
+        self.assertEqual(tuple(attrs), sensors.LEARNING_STATUS_ATTRIBUTES)
+
+    def test_learning_status_records_only_slow_counts(self):
+        unrecorded = sensors.LearningStatusSensor._unrecorded_attributes
+        recorded = sensors.LEARNING_STATUS_RECORDED_ATTRIBUTES
+        published = set(sensors.LEARNING_STATUS_ATTRIBUTES)
+        self.assertLessEqual(recorded, published)
+        self.assertTrue(unrecorded.isdisjoint(recorded))
+        self.assertEqual(unrecorded | recorded, published)
+        for volatile in (
+            "samples_last_60s", "source_report_age_seconds", "residual_median_60s",
+            "last_observation", "rejection_reasons", "calibration_batch_results",
+        ):
+            self.assertIn(volatile, unrecorded)
+
+    def test_recorded_learning_attributes_are_stable_between_samples(self):
+        eng = engine(("switch.a", "switch.b"))
+        sensor = sensors.LearningStatusSensor(eng)
+
+        def recorded():
+            eng.async_set_updated_data(eng.snapshot())
+            return {
+                key: value for key, value in sensor.extra_state_attributes.items()
+                if key in sensors.LEARNING_STATUS_RECORDED_ATTRIBUTES
+            }
+
+        first = recorded()
+        eng.last_source_w = eng.last_residual_w = 900
+        eng._sample_buffer.append(models.Sample(co.time.monotonic(), 900))
+        self.assertEqual(recorded(), first)
 
 
 if __name__ == "__main__":

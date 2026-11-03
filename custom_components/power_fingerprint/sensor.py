@@ -14,6 +14,140 @@ from .entity import PowerFingerprintEntity
 from .naming import source_display_name
 
 
+# Learning status publishes about every 5 s, and most of its attributes are live
+# diagnostics (sample counts, report ages, rolling medians, entity lists) that
+# differ on every publish. Recording them stored a new attribute row each time,
+# about 2 GB in ten days on a large installation. Only these slowly changing
+# counts are recorded; every attribute remains available in the live state.
+LEARNING_STATUS_RECORDED_ATTRIBUTES = frozenset(
+    {
+        "learned_profile_ready_count",
+        "not_yet_learned_count",
+        "fixed_placeholder_count",
+        "fixed_locked_count",
+        "total_meter_count",
+        "energy_dashboard_exported_count",
+        "powercalc_exported_count",
+        "unified_model_version",
+    }
+)
+
+# Every attribute LearningStatusSensor publishes, in publication order. A
+# regression test keeps this in step with extra_state_attributes so that a new
+# diagnostic cannot reach the recorder unnoticed.
+LEARNING_STATUS_ATTRIBUTES = (
+    "learned_profile_ready_count",
+    "not_yet_learned_count",
+    "fixed_placeholder_count",
+    "fixed_locked_count",
+    "accepted_observations",
+    "rejected_observations",
+    "concurrent_decomposed_observations",
+    "coverage_percent",
+    "validated_coverage_percent",
+    "potential_coverage_percent",
+    "validated_runtime_power_w",
+    "candidate_runtime_power_w",
+    "candidate_profile_power_w",
+    "source_power_w",
+    "missing_meters",
+    "stale_meters",
+    "quarantined_meters",
+    "recovering_meters",
+    "active_meter_count",
+    "total_meter_count",
+    "quarantined_meter_risk_w",
+    "samples_last_60s",
+    "source_reports_last_60s",
+    "source_report_age_seconds",
+    "source_report_interval_seconds",
+    "ordinary_edge_timeout_seconds",
+    "learning_blocker_counts",
+    "valid_samples_last_60s",
+    "residual_median_60s",
+    "residual_mad_60s",
+    "meter_transition_threshold_w",
+    "meter_transition_guard_seconds",
+    "meter_transients_last_60s",
+    "rejection_reasons",
+    "session_accepted_observations",
+    "session_rejected_observations",
+    "session_rejection_reasons",
+    "last_observation",
+    "calibrating_entity",
+    "calibration_phase",
+    "calibration_campaign_level_pct",
+    "calibration_batch_running",
+    "calibration_batch_stop_requested",
+    "calibration_batch_status",
+    "calibration_batch_started_at",
+    "calibration_batch_total",
+    "calibration_batch_completed",
+    "calibration_batch_validated",
+    "calibration_batch_failed",
+    "calibration_batch_skipped",
+    "calibration_batch_retried",
+    "calibration_batch_current_entity",
+    "calibration_batch_last_result",
+    "selected_calibration_last_result",
+    "calibration_batch_candidate_count",
+    "calibration_batch_candidates",
+    "calibration_batch_results",
+    "calibration_batch_outcome_counts",
+    "inverter_running",
+    "unified_model_version",
+    "auto_export_energy_dashboard",
+    "energy_dashboard_ready_count",
+    "energy_dashboard_exported_count",
+    "energy_dashboard_ready_entities",
+    "energy_dashboard_exported_entities",
+    "energy_dashboard_sync_error",
+    "powercalc_graduation_eligible_count",
+    "powercalc_graduation_eligible_entities",
+    "powercalc_exported_count",
+    "powercalc_exported_entities",
+    "powercalc_active_count",
+    "powercalc_active_entities",
+    "powercalc_pending_handoff_entities",
+    "profile_lifecycle_counts",
+    "profile_learning_entities",
+    "profile_candidate_entities",
+    "profile_validated_entities",
+    "profile_native_entities",
+    "profile_audit_entities",
+    "profile_drift_entities",
+    "profile_retraining_entities",
+    "powercalc_last_export",
+    "runtime_profile_fallback_active_count",
+    "energy_outlier_filtered_count",
+    "energy_outlier_filtered_entities",
+    "fixed_power_target",
+    "fixed_power_target_attributes",
+    "manual_fixed_count",
+    "manual_fixed_placeholder_entities",
+    "manual_fixed_locked_entities",
+    "outdoor_block_entities",
+    "outdoor_block_active",
+    "outdoor_block_power_w",
+    "outdoor_block_energy_kwh",
+    "outdoor_block_legacy_energy_kwh",
+    "outdoor_block_sample_count",
+    "outdoor_block_mode",
+    "outdoor_ensemble_mature",
+    "outdoor_ensemble_confidence",
+    "outdoor_ensemble_equation_count",
+    "outdoor_ensemble_unique_signature_count",
+    "outdoor_ensemble_rejected_equations",
+    "outdoor_ensemble_rank",
+    "outdoor_ensemble_required_rank",
+    "outdoor_ensemble_rmse_w",
+    "outdoor_ensemble_member_power_w",
+    "outdoor_ensemble_member_evidence",
+    "outdoor_ensemble_predicted_total_w",
+    "outdoor_ensemble_individual_identified_w",
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -104,6 +238,9 @@ class LearningStatusSensor(PowerFingerprintEntity, SensorEntity):
     """Human-readable learning diagnostics."""
 
     _attr_icon = "mdi:brain"
+    _unrecorded_attributes = (
+        frozenset(LEARNING_STATUS_ATTRIBUTES) - LEARNING_STATUS_RECORDED_ATTRIBUTES
+    )
 
     def __init__(self, coordinator) -> None:
         super().__init__(coordinator)

@@ -6,21 +6,22 @@ whole-house power after subtracting directly metered loads. It integrates
 estimated device energy and can export mature profiles to a private local
 Powercalc library.
 
-Version **0.7.4** · Home Assistant **2026.10 or later** · MIT license
+Version **0.7.5** · Home Assistant **2026.10 or later** · MIT license
 
-## What changed in 0.7.4
+## What changed in 0.7.5
 
-A fixed-wattage **placeholder** can make energy accounting usable before a
-device has been learned. Previous versions also treated that provisional
-readiness as a reason to skip the device during batch calibration. Undertrained
-placeholders now remain in the training queue until their measured profiles
-meet the learning requirements. Locked fixed profiles remain excluded.
+The **Learning status** sensor no longer sends its live diagnostics to the
+recorder. It publishes about every five seconds, and most of its attributes
+(sample counts, report ages, rolling medians, calibration lists) change on every
+publish, so each update stored a new copy of the whole attribute block. On a
+large installation that reached about 2 GB of database in ten days, enough to
+push full backups past cloud size limits.
 
-Learning diagnostics distinguish export readiness, learned-profile readiness,
-placeholders, and locked profiles. Existing installations retain their saved
-outdoor group when moving from a private build to this generic public build.
+The sensor's state and a few slowly changing counts are still recorded. Every
+attribute remains in the live state, so dashboards and templates are unaffected;
+only their history is no longer kept.
 
-See [release notes](docs/RELEASE_0.7.4.md) and the [changelog](CHANGELOG.md).
+See [release notes](docs/RELEASE_0.7.5.md) and the [changelog](CHANGELOG.md).
 
 ## Installation with HACS
 
@@ -85,7 +86,7 @@ Existing dashboard YAML and `/config/www/power-fingerprint-wrap-row.js` remain
 user-managed. HACS does not copy this repository's `extras` directory into `www`.
 The optional wrapping helper is included in `extras` for manual installation;
 it extends an already installed `template-entity-row` resource. Existing users
-of that helper do not need to change it for 0.7.4.
+of that helper do not need to change it for 0.7.5.
 
 The native Live isolation summary sensor supplies the header counts without
 whole-house sensor-domain scans.

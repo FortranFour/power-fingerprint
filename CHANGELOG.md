@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.5
+
+- Stop recording the Learning status sensor's live diagnostic attributes. It
+  publishes about every five seconds and most attributes change each time, so
+  every update stored a new attribute row (about 2 GB in ten days on a large
+  installation). The state and eight slowly changing counts are still recorded;
+  all attributes remain in the live state.
+- Add regression checks that keep the recorded and unrecorded attribute lists in
+  step with what the sensor publishes.
+
 ## 0.7.4
 
 - Keep undertrained fixed-wattage placeholders in the calibration batch queue.
