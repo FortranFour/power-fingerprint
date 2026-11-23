@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Bundle a transparent cyan fingerprint integration icon at 256 and 512 pixels
+  in the local brand directory, so Home Assistant can show it on the integrations
+  page. The same icon works on light and dark backgrounds.
+
 ## 0.7.5
 
 - Stop recording the Learning status sensor's live diagnostic attributes. It

@@ -38,6 +38,13 @@ HACS manages integration files. Its first download is required even if the
 integration is already installed manually. Later published releases appear as
 updates in HACS; installing an integration update requires a Home Assistant restart.
 
+## Integration icon
+
+The integration bundles its fingerprint icon in its `brand/` directory.
+After installing a build containing these images, restart Home Assistant and
+refresh the browser to clear any cached placeholder. No separate brand
+integration or configuration change is needed.
+
 ## Setup
 
 Choose one whole-house power sensor and the unmetered devices to track. The
