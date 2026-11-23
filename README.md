@@ -6,20 +6,19 @@ whole-house power after subtracting directly metered loads. It integrates
 estimated device energy and can export mature profiles to a private local
 Powercalc library.
 
-Version **0.7.7** · Home Assistant **2026.10 or later** · MIT license
+Version **0.7.8** · Home Assistant **2026.10 or later** · MIT license
 
-## What changed in 0.7.7
+## What changed in 0.7.8
 
-The integration icon again uses the original blue fingerprint with a lightning
-bolt cut through its center. This replaces the generic fingerprint introduced
-in 0.7.6. Transparent 256- and 512-pixel images preserve the bolt on both light
-and dark backgrounds. Restart Home Assistant after updating through HACS and
-refresh the browser if it retains the previous icon.
+The fingerprint and lightning-bolt icon now uses the original dashboard blue,
+correcting the darker shade introduced in 0.7.7. Its shape and transparency
+are unchanged. Restart Home Assistant after updating through HACS and refresh
+the browser if it retains the previous icon.
 
 Learning and energy accounting are unchanged. No model reset or recalibration
 is needed.
 
-See [release notes](docs/RELEASE_0.7.7.md) and the [changelog](CHANGELOG.md).
+See [release notes](docs/RELEASE_0.7.8.md) and the [changelog](CHANGELOG.md).
 
 ## Installation with HACS
 

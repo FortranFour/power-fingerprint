@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.8
+
+- Match the icon's blue to the original dashboard artwork: #0076FD. Correct
+  the darker shade introduced by background extraction in 0.7.7.
+- Preserve the fingerprint, lightning-bolt cutout, dimensions, and exact alpha
+  masks in the source image and both integration icons.
+- No runtime, learning, calibration, or energy-accounting changes.
+
 ## 0.7.7
 
 - Restore the original blue fingerprint with its central lightning-bolt cutout.
