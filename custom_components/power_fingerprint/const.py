@@ -5,7 +5,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "power_fingerprint"
 NAME = "Power Fingerprint"
-VERSION = "0.7.6"
+VERSION = "0.7.7"
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SELECT,

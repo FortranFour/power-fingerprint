@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.7
+
+- Restore the original blue fingerprint with its central lightning-bolt cutout.
+  Replace the generic fingerprint introduced in 0.7.6 with transparent 256- and
+  512-pixel images based on the original project artwork.
+- Retain the restored source image and document the bolt as part of the brand
+  identity. Remove the replaced generic SVG and its attribution.
+- No learning, calibration, model, or energy-accounting changes.
+
 ## 0.7.6
 
 - Bundle a transparent cyan fingerprint integration icon at 256 and 512 pixels
