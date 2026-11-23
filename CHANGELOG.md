@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.7.6
 
 - Bundle a transparent cyan fingerprint integration icon at 256 and 512 pixels
   in the local brand directory, so Home Assistant can show it on the integrations
   page. The same icon works on light and dark backgrounds.
+- Publish explicitly named release commits only after the Python and HACS
+  validation jobs pass, using the tested commit and matching release notes.
+- Explain residual power, missing-meter uncertainty, and standby limitations
+  in the learning diagnostics guide. No learning or energy-accounting changes.
 
 ## 0.7.5
 

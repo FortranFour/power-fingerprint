@@ -32,7 +32,21 @@ claim inclusion in the default HACS catalog.
 1. Update `VERSION` in `const.py` and `version` in `manifest.json` together.
 2. Add matching release notes under `docs/RELEASE_<version>.md` and update the changelog.
 3. Run the local checks, commit and push the changes, and let GitHub Actions pass.
-4. Create a GitHub release with a new version tag pointing to that tested commit.
+4. For automated publication, use the exact commit subject
+   `Release Power Fingerprint <version>` on `main`. The Validate workflow's
+   release job runs only for these explicit release commits, after both Python
+   versions and HACS validation pass. It verifies that the subject matches the
+   manifest version, then publishes the new tag and release at that tested SHA.
+   Ordinary pushes and pull requests do not publish releases. Existing releases
+   are left unchanged, and existing tags without a release are not reused.
+
+The release job alone receives `contents: write`; validation jobs retain
+read-only repository access. It uses GitHub's job token and requires no stored
+personal access token. If publication fails, correct the problem and rerun the
+failed release job for the same validated commit.
+
+Alternatively, create a GitHub release manually with a new version tag pointing
+to the tested commit.
 
 For example, once a later version has been implemented and tested:
 

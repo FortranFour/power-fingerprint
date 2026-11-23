@@ -6,22 +6,21 @@ whole-house power after subtracting directly metered loads. It integrates
 estimated device energy and can export mature profiles to a private local
 Powercalc library.
 
-Version **0.7.5** · Home Assistant **2026.10 or later** · MIT license
+Version **0.7.6** · Home Assistant **2026.10 or later** · MIT license
 
-## What changed in 0.7.5
+## What changed in 0.7.6
 
-The **Learning status** sensor no longer sends its live diagnostics to the
-recorder. It publishes about every five seconds, and most of its attributes
-(sample counts, report ages, rolling medians, calibration lists) change on every
-publish, so each update stored a new copy of the whole attribute block. On a
-large installation that reached about 2 GB of database in ten days, enough to
-push full backups past cloud size limits.
+Power Fingerprint now includes its integration icon, with transparent 256- and
+512-pixel images. Home Assistant serves these locally on the integrations page;
+no separate brand registration is required. Restart Home Assistant after the
+HACS update and refresh the browser if it still displays the cached placeholder.
 
-The sensor's state and a few slowly changing counts are still recorded. Every
-attribute remains in the live state, so dashboards and templates are unaffected;
-only their history is no longer kept.
+Explicit release commits now publish a GitHub release only after validation
+passes. The learning guide also explains how to interpret unidentified power
+and unavailable meters. Learning and energy accounting are unchanged, including
+the recorder storage fix introduced in 0.7.5.
 
-See [release notes](docs/RELEASE_0.7.5.md) and the [changelog](CHANGELOG.md).
+See [release notes](docs/RELEASE_0.7.6.md) and the [changelog](CHANGELOG.md).
 
 ## Installation with HACS
 

@@ -35,3 +35,58 @@ jobs:
           category: integration
           ignore: brands
           comment: false
+
+  release:
+    name: Publish validated release
+    needs: [tests, hacs]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      startsWith(github.event.head_commit.message, 'Release Power Fingerprint ')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { version } = JSON.parse(fs.readFileSync(
+              'custom_components/power_fingerprint/manifest.json', 'utf8'
+            ));
+            const subject = context.payload.head_commit.message.split('\n')[0];
+            if (!/^\d+\.\d+\.\d+$/.test(version) ||
+                subject !== `Release Power Fingerprint ${version}`) {
+              throw new Error('Release commit subject must match the manifest version');
+            }
+            const tag = `v${version}`;
+            const repo = context.repo;
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({ ...repo, tag });
+              core.notice(`Release already exists; leaving it unchanged: ${existing.data.html_url}`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            // An existing tag may refer to another commit. Never reuse or move it.
+            try {
+              await github.rest.git.getRef({ ...repo, ref: `tags/${tag}` });
+              throw new Error(`Tag ${tag} already exists without a published release`);
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            const body = fs.readFileSync(`docs/RELEASE_${version}.md`, 'utf8');
+            const result = await github.rest.repos.createRelease({
+              ...repo,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: `Power Fingerprint ${version}`,
+              body,
+              draft: false,
+              prerelease: false,
+              make_latest: 'true',
+            });
+            core.notice(`Published ${result.data.html_url}`);
