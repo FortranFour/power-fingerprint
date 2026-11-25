@@ -35,7 +35,12 @@ accounting meaning.
   Compare actual source reports with residual timer samples; held readings are
   not additional meter reports.
 - **Concurrent tracked transition:** another tracked load changed during the
-  measurement. A quieter deliberate cycle can provide more useful evidence.
+  measurement. The group change cannot establish one device's wattage, even
+  when repeated ON/OFF steps agree. Subtracting estimates for some other loads
+  does not establish that the remaining change belongs to the target. These
+  observations do not contribute to learned readiness, suggestions, deterministic
+  fallback power, or Powercalc graduation. A quieter deliberate cycle can provide
+  more useful evidence.
 - **Step too small:** the observed electrical change cannot pass the signal
   gate. A fixed measured wattage can remain appropriate for very small loads.
 - **Between-session variability:** repeated cycles do not yet agree closely
@@ -85,3 +90,24 @@ A steady residual over one minute suggests a background load during that
 window. It does not establish a daily baseline or identify the responsible
 equipment. Restore unavailable meters and compare longer quiet periods before
 changing fixed wattages or relaxing the learning acceptance checks.
+
+## Recovery from contaminated transition evidence
+
+The schema 12 migration removes raw and decomposed concurrent-transition soft
+evidence retained by earlier versions. It also removes pairing credit that may
+have linked a clean edge with a group change. Affected profiles are reassessed;
+an ungraduated profile may return to learning and the calibration queue.
+
+Accepted edge observations, validated sessions, fingerprints, cumulative energy,
+and explicit fixed wattages and modes are retained. Preserving an energy counter
+does not certify its historical accuracy: an incorrect mature profile could have
+supplied runtime fallback power before the correction. The migration does not
+reconstruct past consumption or automatically revoke an existing Powercalc
+handoff. Review a previously exported profile if it relied on group transitions.
+
+Compare learned wattages with the actual input ratings on the lamps or appliances.
+For lighting, sum the bulbs' electrical wattages; a lumen-equivalent incandescent
+rating describes brightness. A broad device-type limit is only a gross error
+check, not a measurement of the particular fixture. A plausible fixed value can
+be used while independent measurements accumulate; keep it marked provisional
+until the bulb ratings or a direct measurement confirm it.

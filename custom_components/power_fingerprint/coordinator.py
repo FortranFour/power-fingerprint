@@ -551,6 +551,38 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lookup_keys = list(dict.fromkeys((key, eid, slugify(eid))))
             model_payload = next((stored_models.get(candidate) for candidate in lookup_keys if stored_models.get(candidate) is not None), None)
             model = DeviceModel.from_dict(eid, model_payload)
+            # Concurrent whole-house steps cannot identify an individual load.
+            # Older versions promoted both raw group steps and their estimated
+            # remainders as independent evidence. Clean reintroduced sources too,
+            # even when the rest of the store has already migrated to schema 12.
+            before_soft = len(model.soft_evidence_observations)
+            model.soft_evidence_observations = [
+                row for row in model.soft_evidence_observations
+                if not self._soft_evidence_is_confounded(row)
+            ]
+            removed_soft = before_soft - len(model.soft_evidence_observations)
+            if removed_soft:
+                migration_performed = True
+                key_name = "schema_12_removed_confounded_soft_evidence"
+                self.migration_cleanup[key_name] = int(
+                    self.migration_cleanup.get(key_name, 0) or 0
+                ) + removed_soft
+                affected = set(self.migration_cleanup.get("schema_12_affected_entities") or [])
+                affected.add(eid)
+                self.migration_cleanup["schema_12_affected_entities"] = sorted(affected)
+                # A retained clean edge may have been paired with a removed
+                # group edge. Keep its own weight, but discard that pair credit.
+                for row in model.soft_evidence_observations:
+                    base_weight = row.get("base_weight")
+                    if base_weight is None:
+                        base_weight = max(
+                            0.0, float(row.get("weight", 0.0) or 0.0)
+                            - float(row.get("pair_bonus", 0.0) or 0.0),
+                        )
+                    row["weight"] = float(base_weight)
+                    row["pair_bonus"] = 0.0
+                model.paired_evidence_count = 0
+                model.pending_soft_edge = None
             if schema_version < 11 and eid in self._outdoor_block_entity_set:
                 before_soft = len(model.soft_evidence_observations)
                 model.soft_evidence_observations = [
@@ -729,6 +761,11 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for obs in removed_orphan_observations
         ):
             self.last_observation = None
+
+        for eid in self.migration_cleanup.get("schema_12_affected_entities") or []:
+            profile = self.device_profiles.get(eid)
+            if profile and not profile.powercalc_exported:
+                self._refresh_profile_lifecycle(eid)
 
         # Persist schema cleanup/profile migration immediately so a restart during
         # early startup cannot reapply the same one-time cleanup.
@@ -2148,10 +2185,20 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         return value if self._state_is_active(entity_id, state) else 0.0
 
+    @staticmethod
+    def _soft_evidence_is_confounded(row: dict[str, Any]) -> bool:
+        """Identify group steps that cannot establish one device's wattage."""
+        return row.get("source_reason") == "concurrent_tracked_transition" or row.get("kind") in {
+            "confounded_transition", "decomposed_concurrent_transition",
+        }
+
     def _soft_evidence_summary(self, entity_id: str) -> dict[str, Any]:
         """Summarize quality-weighted low-power observations for one entity."""
         model = self.models.get(entity_id)
-        rows = list(model.soft_evidence_observations) if model else []
+        rows = [
+            row for row in model.soft_evidence_observations
+            if not self._soft_evidence_is_confounded(row)
+        ] if model else []
         weighted = [
             (float(row.get("value_w", 0.0) or 0.0), float(row.get("weight", 0.0) or 0.0), str(row.get("ts", "")))
             for row in rows
@@ -2191,7 +2238,14 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         accepted: bool, reason: str, concurrent: bool, availability_issue: bool,
     ) -> None:
         """Accumulate graded state-confirmed evidence without weakening hard acceptance."""
-        if not self._supports_soft_fixed_evidence(pending.entity_id) or availability_issue:
+        if not self._supports_soft_fixed_evidence(pending.entity_id):
+            return
+        model = self.models[pending.entity_id]
+        if availability_issue or concurrent or reason == "concurrent_tracked_transition":
+            # Repetition and matching ON/OFF group steps do not make those
+            # changes attributable to this load. They must not form pairs with
+            # otherwise clean edges either.
+            model.pending_soft_edge = None
             return
         level_delta = pending.new_level - pending.old_level
         if abs(level_delta) < 0.95:
@@ -2214,12 +2268,9 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif reason == "step_too_small":
             weight = max(0.35, min(0.6, snr / 3.0))
             kind = "weak_step"
-        elif concurrent or reason == "concurrent_tracked_transition":
-            weight = max(0.2, min(0.4, snr / 5.0))
-            kind = "confounded_transition"
         else:
+            model.pending_soft_edge = None
             return
-        model = self.models[pending.entity_id]
         ts = self._utc_for_monotonic(pending.event_ts)
         direction = "up" if level_delta > 0 else "down"
         pair_bonus = 0.0
@@ -2253,97 +2304,6 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._energy_readiness_cache.pop(pending.entity_id, None)
         self._profile_assessment_cache.pop(pending.entity_id, None)
         self._refresh_profile_lifecycle(pending.entity_id)
-
-    def _fixed_power_prior_w(self, entity_id: str) -> float | None:
-        """Return a conservative prior for decomposing simultaneous fixed-load edges."""
-        if not self._supports_soft_fixed_evidence(entity_id):
-            return None
-        model = self.models.get(entity_id)
-        candidates: list[float] = []
-        if model:
-            channel = model.channels.get("level")
-            if channel and len(channel.accepted_values) >= 3:
-                center = robust_median(channel.accepted_values)
-                if center is not None and center > 0:
-                    candidates.append(float(center))
-        soft = self._soft_evidence_summary(entity_id)
-        if float(soft.get("evidence_units", 0.0) or 0.0) >= 3.0 and soft.get("power_w") is not None:
-            candidates.append(float(soft["power_w"]))
-        profile = self.device_profiles.get(entity_id)
-        if profile and profile.powercalc_power_w is not None and profile.lifecycle_state in {
-            "validated", "validated_native", "audit", "graduated_to_powercalc"
-        }:
-            candidates.append(float(profile.powercalc_power_w))
-        return robust_median(candidates) if candidates else None
-
-    def _record_decomposed_concurrent_evidence(
-        self, pending: PendingTransition, *, delta_w: float, noise_w: float,
-        observation_end: float,
-    ) -> bool:
-        """Subtract known simultaneous fixed-load edges and learn from the remainder."""
-        if not self._supports_soft_fixed_evidence(pending.entity_id):
-            return False
-        start = pending.event_ts - ISOLATION_CONCURRENCY_SECONDS
-        contributors: list[dict[str, Any]] = []
-        expected_other_delta = 0.0
-        for item in self._transition_detail_log:
-            ts = float(item.get("ts", 0.0) or 0.0)
-            eid = str(item.get("entity_id") or "")
-            if eid == pending.entity_id or not (start <= ts <= observation_end):
-                continue
-            prior = self._fixed_power_prior_w(eid)
-            level_delta = float(item.get("level_delta", 0.0) or 0.0)
-            if prior is None or abs(level_delta) < 0.05:
-                continue
-            contribution = prior * level_delta
-            expected_other_delta += contribution
-            contributors.append({
-                "entity_id": eid,
-                "prior_w": round(prior, 3),
-                "level_delta": round(level_delta, 3),
-                "expected_delta_w": round(contribution, 3),
-            })
-        if not contributors:
-            return False
-        corrected = delta_w - expected_other_delta
-        target_level_delta = pending.new_level - pending.old_level
-        if abs(target_level_delta) < 0.95 or corrected * target_level_delta <= 0:
-            return False
-        value = abs(corrected / target_level_delta)
-        local_noise = max(0.5, float(noise_w or 0.0))
-        threshold = max(3.0, 1.5 * local_noise)
-        if value < threshold or value > self._maximum_plausible_w(pending.entity_id):
-            return False
-        model = self.models[pending.entity_id]
-        ts = self._utc_for_monotonic(pending.event_ts)
-        signature = f"decomposed:{ts}"
-        if any(row.get("ensemble_signature") == signature for row in model.soft_evidence_observations[-20:]):
-            return True
-        snr = value / local_noise
-        weight = max(0.35, min(0.65, snr / 4.0))
-        model.soft_evidence_observations.append({
-            "ts": ts,
-            "value_w": round(value, 3),
-            "weight": round(weight, 3),
-            "base_weight": round(weight, 3),
-            "pair_bonus": 0.0,
-            "snr": round(snr, 2),
-            "noise_w": round(local_noise, 3),
-            "kind": "decomposed_concurrent_transition",
-            "source_reason": "concurrent_tracked_transition",
-            "direction": "up" if target_level_delta > 0 else "down",
-            "ensemble_signature": signature,
-            "raw_delta_w": round(delta_w, 3),
-            "subtracted_other_delta_w": round(expected_other_delta, 3),
-            "contributors": contributors,
-        })
-        if len(model.soft_evidence_observations) > 80:
-            del model.soft_evidence_observations[:-80]
-        self._concurrent_decomposed_count += 1
-        self._energy_readiness_cache.pop(pending.entity_id, None)
-        self._profile_assessment_cache.pop(pending.entity_id, None)
-        self._refresh_profile_lifecycle(pending.entity_id)
-        return True
 
     def _edge_symmetry_plausible(self, pending: PendingTransition, value_w: float) -> bool:
         """Check whether an OFF edge agrees with recent live/start-edge power."""
@@ -2875,21 +2835,15 @@ class PowerFingerprintCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             after_sample_count=len(after),
         )
         self.models[pending.entity_id].channel(pending.channel).add(obs, self.max_observations)
-        decomposed_concurrent = False
-        if concurrent_transition and not culprit_meter:
-            decomposed_concurrent = self._record_decomposed_concurrent_evidence(
-                pending, delta_w=delta, noise_w=noise, observation_end=after_end
-            )
-        if not decomposed_concurrent:
-            self._record_soft_edge_evidence(
-                pending,
-                delta_w=delta,
-                noise_w=noise,
-                accepted=accepted,
-                reason=reason,
-                concurrent=bool(concurrent_transition),
-                availability_issue=bool(culprit_meter),
-            )
+        self._record_soft_edge_evidence(
+            pending,
+            delta_w=delta,
+            noise_w=noise,
+            accepted=accepted,
+            reason=reason,
+            concurrent=bool(concurrent_transition),
+            availability_issue=bool(culprit_meter),
+        )
         self._apply_isolation_observation(pending, obs)
         self.last_observation = obs.as_dict()
         if accepted:

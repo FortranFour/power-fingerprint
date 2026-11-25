@@ -1,4 +1,4 @@
-"""Offline regression checks for 0.7.5; run with Python's unittest runner.
+"""Offline regression checks; run with Python's unittest runner.
 
 HA boundaries are stubbed; the coordinator, models, sensors, and learning
 methods under test are the actual distributable code. These checks do not
@@ -294,6 +294,140 @@ class EdgeTests(unittest.TestCase):
         obs, _ = evaluate(engine(("climate.thermostat",)), after_w=110, channel="heating")
         self.assertFalse(obs["accepted"])
         self.assertEqual(obs["reason"], "climate_step_too_small")
+
+
+class SoftEvidenceTests(unittest.TestCase):
+    @staticmethod
+    def row(value=450.0, *, kind="confounded_transition",
+            reason="concurrent_tracked_transition", day=1):
+        return {"ts": f"2026-01-{day:02d}T12:00:00+00:00", "value_w": value,
+                "weight": 0.75, "base_weight": 0.4, "pair_bonus": 0.35,
+                "kind": kind, "source_reason": reason, "direction": "up"}
+
+    def test_repeated_group_steps_cannot_validate_graduate_or_suggest_watts(self):
+        for kind, reason in (
+            ("confounded_transition", "concurrent_tracked_transition"),
+            ("decomposed_concurrent_transition", "concurrent_tracked_transition"),
+            ("legacy_kind", "concurrent_tracked_transition"),
+            ("confounded_transition", "legacy_reason"),
+        ):
+            with self.subTest(kind=kind, reason=reason):
+                eng = engine()
+                eid = eng.tracked_entities[0]
+                model = eng.models[eid]
+                model.isolated_energy_kwh = 1.0
+                model.soft_evidence_observations = [
+                    self.row(kind=kind, reason=reason, day=day) for day in range(1, 21)
+                ]
+                profile = eng.device_profiles[eid]
+                profile.fixed_power_mode, profile.fixed_power_w = "placeholder", 20.0
+                profile.lifecycle_state = "validated"
+                self.assertEqual(eng._soft_evidence_summary(eid)["evidence_units"], 0)
+                self.assertIsNone(eng._soft_evidence_summary(eid)["power_w"])
+                self.assertFalse(eng.energy_dashboard_readiness_assessment(eid)["learned_ready"])
+                self.assertFalse(eng.powercalc_graduation_assessment(eid)["eligible"])
+                self.assertEqual(eng.powercalc_graduation_options(), [])
+                self.assertNotEqual(eng.fixed_power_suggestion(eid)["power_w"], 450.0)
+                self.assertIn(eid, eng.calibration_training_candidates())
+                eng.hass.states.get(eid).state = "on"
+                self.assertEqual(eng.device_isolated_power_w(eid), 20.0)
+                eng._refresh_profile_lifecycle(eid)
+                self.assertEqual(profile.lifecycle_state, "learning")
+
+    def test_known_other_load_does_not_make_a_concurrent_remainder_attributable(self):
+        eng = engine(("switch.test_light", "switch.other"))
+        eng.models["switch.other"].channel("level").observations = [
+            {"accepted": True, "value_w": 10.0} for _ in range(3)
+        ]
+        eng._transition_detail_log.append(
+            {"ts": 110, "entity_id": "switch.other", "level_delta": 1.0}
+        )
+        obs, _ = evaluate(eng, concurrency=110, after_w=560)
+        self.assertEqual(obs["reason"], "concurrent_tracked_transition")
+        self.assertEqual(eng.models["switch.test_light"].soft_evidence_observations, [])
+        self.assertEqual(eng._concurrent_decomposed_count, 0)
+
+    def test_clean_small_steps_still_accumulate_and_pair(self):
+        eng = engine()
+        eid = eng.tracked_entities[0]
+        for event_ts, old, new, delta in ((100, 0, 1, 5), (200, 1, 0, -5)):
+            eng._record_soft_edge_evidence(
+                models.PendingTransition(eid, "level", event_ts, old, new,
+                                         "up" if new else "down"),
+                delta_w=delta, noise_w=0.5, accepted=False, reason="step_too_small",
+                concurrent=False, availability_issue=False,
+            )
+        model = eng.models[eid]
+        self.assertEqual(len(model.soft_evidence_observations), 2)
+        self.assertEqual(model.paired_evidence_count, 1)
+        self.assertEqual(eng._soft_evidence_summary(eid)["power_w"], 5)
+        self.assertGreater(eng._soft_evidence_summary(eid)["evidence_units"], 1)
+
+    def test_concurrent_edge_interrupts_clean_pairing(self):
+        eng = engine()
+        eid = eng.tracked_entities[0]
+        for event_ts, old, new, delta, concurrent in (
+            (100, 0, 1, 20, False), (150, 1, 0, -450, True), (200, 1, 0, -20, False),
+        ):
+            eng._record_soft_edge_evidence(
+                models.PendingTransition(eid, "level", event_ts, old, new,
+                                         "up" if new else "down"),
+                delta_w=delta, noise_w=0.5, accepted=not concurrent,
+                reason="concurrent_tracked_transition" if concurrent else "accepted",
+                concurrent=concurrent, availability_issue=False,
+            )
+        model = eng.models[eid]
+        self.assertEqual(len(model.soft_evidence_observations), 2)
+        self.assertEqual(model.paired_evidence_count, 0)
+        self.assertEqual(model.soft_evidence_observations[-1]["pair_bonus"], 0)
+
+    def restore(self, *, schema=11):
+        eng = engine()
+        eid = eng.tracked_entities[0]
+        model = eng.models[eid]
+        model.energy_kwh = model.isolated_energy_kwh = 1.25
+        model.channel("level").observations = [{"accepted": True, "value_w": 20}]
+        model.soft_evidence_observations = [self.row(), self.row(
+            20, kind="accepted_strong", reason="accepted")]
+        model.paired_evidence_count = 1
+        model.pending_soft_edge = {"direction": "up", "value_w": 450}
+        profile = eng.device_profiles[eid]
+        profile.fixed_power_mode, profile.fixed_power_w = "placeholder", 20.0
+        profile.lifecycle_state = "validated"
+        stored = {"schema_version": schema, "models": {eid: model.as_dict()},
+                  "device_profiles": {eid: profile.as_dict()}}
+        eng.store.async_load = AsyncMock(return_value=stored)
+        eng.store.async_save = AsyncMock()
+        asyncio.run(eng._async_load())
+        return eng, eid, stored
+
+    def test_upgrade_removes_group_evidence_and_pair_credit_preserving_settings_and_energy(self):
+        eng, eid, old = self.restore()
+        model, profile = eng.models[eid], eng.device_profiles[eid]
+        self.assertEqual(model.energy_kwh, 1.25)
+        self.assertEqual(model.isolated_energy_kwh, 1.25)
+        self.assertEqual(model.channels["level"].observations, old["models"][eid]["channels"]["level"]["observations"])
+        self.assertEqual((profile.fixed_power_mode, profile.fixed_power_w), ("placeholder", 20.0))
+        self.assertEqual(profile.lifecycle_state, "learning")
+        self.assertEqual(len(model.soft_evidence_observations), 1)
+        self.assertEqual(model.soft_evidence_observations[0]["weight"], 0.4)
+        self.assertEqual(model.soft_evidence_observations[0]["pair_bonus"], 0)
+        self.assertEqual(model.paired_evidence_count, 0)
+        self.assertIsNone(model.pending_soft_edge)
+        self.assertEqual(eng.migration_cleanup["schema_12_removed_confounded_soft_evidence"], 1)
+        eng.store.async_save.assert_awaited_once()
+        saved = eng.store.async_save.await_args.args[0]
+        self.assertEqual(saved["schema_version"], co.MODEL_SCHEMA_VERSION)
+        eng.store.async_load.return_value = saved
+        eng.store.async_save.reset_mock()
+        asyncio.run(eng._async_load())
+        eng.store.async_save.assert_not_awaited()
+        self.assertEqual(eng.migration_cleanup["schema_12_removed_confounded_soft_evidence"], 1)
+
+    def test_reintroduced_model_is_cleaned_after_store_schema_already_migrated(self):
+        eng, eid, _ = self.restore(schema=co.MODEL_SCHEMA_VERSION)
+        self.assertEqual(len(eng.models[eid].soft_evidence_observations), 1)
+        eng.store.async_save.assert_awaited_once()
 
 
 class CalibrationTests(unittest.TestCase):
@@ -831,6 +965,29 @@ class DiagnosticsReplayTests(unittest.TestCase):
             restored = eng.device_profiles[eid].as_dict()
             for key in ("fixed_power_mode", "fixed_power_w"):
                 self.assertEqual(restored.get(key), original.get(key), (eid, key))
+
+    def test_upgrade_rechecks_graduates_with_no_validated_sessions(self):
+        unsupported_graduates = [
+            eid for eid, detail in self.data["tracked_details"].items()
+            if detail.get("model_attributes", {}).get("powercalc_graduation", {}).get("eligible")
+            and not self.data["models"][eid].get("validated_sessions")
+            and any(row.get("source_reason") == "concurrent_tracked_transition"
+                    for row in self.data["models"][eid].get("soft_evidence_observations", []))
+        ]
+        if not unsupported_graduates:
+            self.skipTest("Diagnostics contain no graduates supported by concurrent steps alone")
+        eng = self.eng
+        eng.store.async_load = AsyncMock(return_value={
+            "schema_version": 11, "models": self.data["models"],
+            "device_profiles": self.data["device_profiles"],
+        })
+        eng.store.async_save = AsyncMock()
+        asyncio.run(eng._async_load())
+        for eid in unsupported_graduates:
+            self.assertFalse(eng.powercalc_graduation_assessment(eid)["eligible"], eid)
+            self.assertFalse(eng.energy_dashboard_readiness_assessment(eid)["learned_ready"], eid)
+            self.assertIn(eid, eng.calibration_training_candidates())
+            self.assertNotIn(eng.device_profiles[eid].lifecycle_state, {"validated", "validated_native"})
 
     def test_counts_and_priors_match_uploaded_isolation_attributes(self):
         ready = self.data["state"]["energy_dashboard_ready_entities"]
