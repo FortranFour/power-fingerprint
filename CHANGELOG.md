@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Stop using concurrent whole-house transitions, including estimated remainders
+  after subtracting other loads, as evidence for one device's fixed wattage.
+  Repeated group changes could otherwise mark small lights as learned and ready
+  for Powercalc at hundreds of watts without a validated session.
+- Migrate model storage to schema 12, removing that contaminated soft evidence
+  and its pairing credit. Recheck affected profiles while preserving accepted
+  edges, validated sessions, cumulative energy, and manual fixed settings.
+- Keep clean small-step learning available and prevent a concurrent edge from
+  forming a pair with a clean edge. Add offline regressions and diagnostic replay.
+
 ## 0.7.8
 
 - Match the icon's blue to the original dashboard artwork: #0076FD. Correct
