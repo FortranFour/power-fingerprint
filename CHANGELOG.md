@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.9
 
 - Stop using concurrent whole-house transitions, including estimated remainders
   after subtracting other loads, as evidence for one device's fixed wattage.

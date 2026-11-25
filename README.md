@@ -6,19 +6,22 @@ whole-house power after subtracting directly metered loads. It integrates
 estimated device energy and can export mature profiles to a private local
 Powercalc library.
 
-Version **0.7.8** · Home Assistant **2026.10 or later** · MIT license
+Version **0.7.9** · Home Assistant **2026.10 or later** · MIT license
 
-## What changed in 0.7.8
+## What changed in 0.7.9
 
-The fingerprint and lightning-bolt icon now uses the original dashboard blue,
-correcting the darker shade introduced in 0.7.7. Its shape and transparency
-are unchanged. Restart Home Assistant after updating through HACS and refresh
-the browser if it retains the previous icon.
+Concurrent household power changes no longer count as evidence for an individual
+device's wattage. Earlier versions could incorrectly mark a small light as learned
+and ready for Powercalc at hundreds of watts without a validated session.
 
-Learning and energy accounting are unchanged. No model reset or recalibration
-is needed.
+On startup, model schema 12 removes contaminated concurrent-transition evidence
+and pairing credit, then rechecks affected unexported profiles. Accepted edges,
+validated sessions, accumulated energy, and explicit fixed settings are retained.
+A profile may return to learning and the calibration queue. Historical energy is
+preserved without claiming that past estimates were accurate.
 
-See [release notes](docs/RELEASE_0.7.8.md) and the [changelog](CHANGELOG.md).
+Update through HACS and restart Home Assistant. See
+[release notes](docs/RELEASE_0.7.9.md) and the [changelog](CHANGELOG.md).
 
 ## Installation with HACS
 
